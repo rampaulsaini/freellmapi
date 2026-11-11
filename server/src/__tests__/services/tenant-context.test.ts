@@ -55,6 +55,7 @@ describe('resolveTenantContext', () => {
 
   it('does not infer a tenant for users without a membership', () => {
     const unassigned = createUser('tenant-unassigned@example.test', 'strong-test-password');
+    getDb().prepare('DELETE FROM tenant_memberships WHERE user_id = ?').run(unassigned.userId);
     expect(resolveTenantContext(unassigned.userId)).toBeNull();
   });
 
