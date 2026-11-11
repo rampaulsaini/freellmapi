@@ -122,6 +122,11 @@ describe('universal discovery catalogue foundation', () => {
     const listed = await request(app, 'GET', '/api/discovery/records?kind=tool');
     expect(listed.body.records).toHaveLength(1);
     expect(listed.body.records[0].name).toBe('Example Tool Updated');
+    expect(listed.body.records[0].schemaVersion).toBe('1.0.0');
+    expect(listed.body.records[0].contentHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(listed.body.records[0].language).toBe('und');
+    expect(listed.body.records[0].tagsJson).toBe('[]');
+    expect(listed.body.records[0].evidenceRefsJson).toBe('[]');
   });
 
   it('rejects unknown sources and non-HTTPS source URLs', async () => {

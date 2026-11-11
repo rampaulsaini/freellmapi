@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { getDb } from '../db/index.js';
 import { GitHubDiscoveryError, syncGitHubRepositories } from '../services/github-discovery.js';
+import { DISCOVERY_SCHEMA_VERSION, discoveryContentHash } from '../services/discovery-contract.js';
 
 export const discoveryRouter = Router();
 
@@ -26,6 +27,10 @@ const recordSchema = z.object({
   sourceUrl: z.string().url().max(2048).refine(value => value.startsWith('https://'), 'Source URL must use HTTPS'),
   license: z.string().max(300).nullable().optional(),
   metadata: z.record(z.unknown()).optional().default({}),
+  language: z.string().trim().min(2).max(35).optional().default('und'),
+  tags: z.array(z.string().trim().min(1).max(64)).max(30).optional().default([]),
+  sourceUpdatedAt: z.string().datetime().nullable().optional(),
+  evidenceRefs: z.array(z.string().trim().min(1).max(300)).max(20).optional().default([]),
 }).strict();
 
 // All discovery routes are mounted behind dashboard authentication.
@@ -74,6 +79,9 @@ discoveryRouter.get('/records', (req: Request, res: Response) => {
         SELECT r.id, r.source_id AS sourceId, s.name AS sourceName,
                r.external_id AS externalId, r.kind, r.name, r.description,
                r.source_url AS sourceUrl, r.license, r.verification_status AS verificationStatus,
+               r.schema_version AS schemaVersion, r.content_hash AS contentHash, r.language,
+               r.tags_json AS tagsJson, r.source_updated_at AS sourceUpdatedAt,
+               r.evidence_refs_json AS evidenceRefsJson, r.last_synced_at AS lastSyncedAt,
                r.first_seen_at AS firstSeenAt, r.last_seen_at AS lastSeenAt
           FROM discovery_records r JOIN discovery_sources s ON s.id = r.source_id
          WHERE r.kind = ? ORDER BY r.last_seen_at DESC, r.id DESC LIMIT ? OFFSET ?
@@ -99,10 +107,18 @@ discoveryRouter.post('/records', (req: Request, res: Response) => {
   }
   const item = parsed.data;
   const metadataJson = stableJson(item.metadata);
-  if (Buffer.byteLength(metadataJson, 'utf8') > 16 * 1024) {
-    res.status(400).json({ error: { message: 'Metadata must be 16 KB or smaller' } });
+  const tagsJson = stableJson(item.tags);
+  const evidenceRefsJson = stableJson(item.evidenceRefs);
+  if (Buffer.byteLength(metadataJson, 'utf8') > 16 * 1024
+    || Buffer.byteLength(tagsJson, 'utf8') > 4 * 1024
+    || Buffer.byteLength(evidenceRefsJson, 'utf8') > 8 * 1024) {
+    res.status(400).json({ error: { message: 'Metadata, tags, or evidence references exceed their size limits' } });
     return;
   }
+  const contentHash = discoveryContentHash({
+    kind: item.kind, name: item.name, description: item.description, sourceUrl: item.sourceUrl,
+    license: item.license ?? null, language: item.language, tags: item.tags, metadata: item.metadata,
+  });
   const db = getDb();
   const source = db.prepare('SELECT id FROM discovery_sources WHERE id = ? AND enabled = 1').get(item.sourceId);
   if (!source) {
@@ -111,8 +127,9 @@ discoveryRouter.post('/records', (req: Request, res: Response) => {
   }
   db.prepare(`
     INSERT INTO discovery_records (
-      source_id, external_id, kind, name, description, source_url, license, metadata_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      source_id, external_id, kind, name, description, source_url, license, metadata_json,
+      schema_version, content_hash, language, tags_json, source_updated_at, evidence_refs_json, last_synced_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(source_id, external_id) DO UPDATE SET
       verification_status = CASE
         WHEN discovery_records.kind IS NOT excluded.kind
@@ -121,16 +138,26 @@ discoveryRouter.post('/records', (req: Request, res: Response) => {
           OR discovery_records.source_url IS NOT excluded.source_url
           OR discovery_records.license IS NOT excluded.license
           OR discovery_records.metadata_json IS NOT excluded.metadata_json
+          OR discovery_records.content_hash <> '' AND discovery_records.content_hash IS NOT excluded.content_hash
+          OR discovery_records.language IS NOT excluded.language
+          OR discovery_records.tags_json IS NOT excluded.tags_json
+          OR discovery_records.evidence_refs_json IS NOT excluded.evidence_refs_json
         THEN 'unverified'
         ELSE discovery_records.verification_status
       END,
       kind = excluded.kind, name = excluded.name, description = excluded.description,
-      source_url = excluded.source_url, license = excluded.license,
-      metadata_json = excluded.metadata_json, last_seen_at = datetime('now')
+      source_url = excluded.source_url, license = excluded.license, metadata_json = excluded.metadata_json,
+      schema_version = excluded.schema_version, content_hash = excluded.content_hash,
+      language = excluded.language, tags_json = excluded.tags_json,
+      source_updated_at = excluded.source_updated_at, evidence_refs_json = excluded.evidence_refs_json,
+      last_synced_at = datetime('now'), last_seen_at = datetime('now')
   `).run(item.sourceId, item.externalId, item.kind, item.name, item.description,
-    item.sourceUrl, item.license ?? null, metadataJson);
+    item.sourceUrl, item.license ?? null, metadataJson, DISCOVERY_SCHEMA_VERSION, contentHash,
+    item.language, tagsJson, item.sourceUpdatedAt ?? null, evidenceRefsJson);
   const saved = db.prepare(`
-    SELECT id, verification_status AS verificationStatus
+    SELECT id, verification_status AS verificationStatus, schema_version AS schemaVersion,
+           content_hash AS contentHash, language, tags_json AS tagsJson,
+           source_updated_at AS sourceUpdatedAt, evidence_refs_json AS evidenceRefsJson
       FROM discovery_records WHERE source_id = ? AND external_id = ?
   `).get(item.sourceId, item.externalId);
   res.status(201).json({ record: saved, createdOrUpdated: true });

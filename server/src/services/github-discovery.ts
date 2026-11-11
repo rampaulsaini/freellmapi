@@ -1,4 +1,5 @@
 import type { Db } from '../db/types.js';
+import { DISCOVERY_SCHEMA_VERSION, canonicalJson, discoveryContentHash } from './discovery-contract.js';
 
 const API_URL = 'https://api.github.com/search/repositories';
 const PER_PAGE = 100;
@@ -22,15 +23,6 @@ export class GitHubDiscoveryError extends Error {
     this.status = status;
     this.retryAfter = retryAfter;
   }
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  if (value !== null && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'null';
 }
 
 function isoDay(value: string): string {
@@ -125,18 +117,28 @@ export async function syncGitHubRepositories(
       const name = repo.name?.trim();
       const sourceUrl = repo.html_url;
       if (!externalId || !name || !sourceUrl?.startsWith('https://github.com/')) continue;
-      const metadata = stableJson({
+      const metadataValue = {
         stars: Number.isFinite(repo.stargazers_count) ? repo.stargazers_count : 0,
         forks: Number.isFinite(repo.forks_count) ? repo.forks_count : 0,
         language: repo.language ?? null,
         updatedAt: repo.updated_at ?? null,
         archived: repo.archived === true,
         disabled: repo.disabled === true,
+      };
+      const description = repo.description ?? '';
+      const license = repo.license?.spdx_id ?? null;
+      const language = repo.language ?? 'und';
+      const tags: string[] = [];
+      const tagsJson = canonicalJson(tags);
+      const metadata = canonicalJson(metadataValue);
+      const contentHash = discoveryContentHash({
+        kind: 'tool', name, description, sourceUrl, license, language, tags, metadata: metadataValue,
       });
       db.prepare(`
         INSERT INTO discovery_records (
-          source_id, external_id, kind, name, description, source_url, license, metadata_json
-        ) VALUES ('github', ?, 'tool', ?, ?, ?, ?, ?)
+          source_id, external_id, kind, name, description, source_url, license, metadata_json,
+          schema_version, content_hash, language, tags_json, source_updated_at, evidence_refs_json, last_synced_at
+        ) VALUES ('github', ?, 'tool', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', datetime('now'))
         ON CONFLICT(source_id, external_id) DO UPDATE SET
           verification_status = CASE
             WHEN discovery_records.kind IS NOT excluded.kind
@@ -144,20 +146,21 @@ export async function syncGitHubRepositories(
               OR discovery_records.description IS NOT excluded.description
               OR discovery_records.source_url IS NOT excluded.source_url
               OR discovery_records.license IS NOT excluded.license
-              OR discovery_records.metadata_json IS NOT excluded.metadata_json
+              OR discovery_records.content_hash <> '' AND discovery_records.content_hash IS NOT excluded.content_hash
+              OR discovery_records.language IS NOT excluded.language
+              OR discovery_records.tags_json IS NOT excluded.tags_json
             THEN 'unverified'
             ELSE discovery_records.verification_status
           END,
           kind = excluded.kind, name = excluded.name, description = excluded.description,
-          source_url = excluded.source_url, license = excluded.license,
-          metadata_json = excluded.metadata_json, last_seen_at = datetime('now')
+          source_url = excluded.source_url, license = excluded.license, metadata_json = excluded.metadata_json,
+          schema_version = excluded.schema_version, content_hash = excluded.content_hash,
+          language = excluded.language, tags_json = excluded.tags_json,
+          source_updated_at = excluded.source_updated_at,
+          last_synced_at = datetime('now'), last_seen_at = datetime('now')
       `).run(
-        externalId,
-        name,
-        repo.description ?? '',
-        sourceUrl,
-        repo.license?.spdx_id ?? null,
-        metadata,
+        externalId, name, description, sourceUrl, license, metadata,
+        DISCOVERY_SCHEMA_VERSION, contentHash, language, tagsJson, repo.updated_at ?? null,
       );
       fetched += 1;
     }
