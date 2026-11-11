@@ -125,7 +125,7 @@ function parseModelCsv(input: string): ImportRow[] {
       ...(get(nameIndex) ? { displayName: get(nameIndex) } : {}),
       ...(context && Number.isSafeInteger(context) && context > 0 ? { contextWindow: context } : {}),
       supportsVision: truthy(get(visionIndex)),
-      supportsTools: truthy(get(toolsIndex)),
+      supportsTools: toolsIndex < 0 || !get(toolsIndex) ? true : truthy(get(toolsIndex)),
       line: offset + 2,
     }
   })
