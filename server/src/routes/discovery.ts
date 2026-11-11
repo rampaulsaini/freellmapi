@@ -1,9 +1,99 @@
+import { createHash } from 'node:crypto';
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { getDb } from '../db/index.js';
 import { GitHubDiscoveryError, syncGitHubRepositories } from '../services/github-discovery.js';
 import { DISCOVERY_SCHEMA_VERSION, discoveryContentHash } from '../services/discovery-contract.js';
+const SHOWROOM_SYNC_BATCH_SIZE = 200;
+
+function parseJsonArray(value: unknown): unknown[] {
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function publishVerifiedShowroomRecords(): Promise<{ eligible: number; published: number; batches: number }> {
+  const baseUrl = process.env.SUPABASE_URL?.trim().replace(/\/$/, '');
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!baseUrl || !serviceKey || !/^https:\/\//i.test(baseUrl)) {
+    throw new Error('Showroom publishing is not configured');
+  }
+
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT r.source_id AS sourceId, r.external_id AS externalId, r.kind, r.name,
+           r.description, r.source_url AS sourceUrl, r.license,
+           r.schema_version AS schemaVersion, r.content_hash AS contentHash,
+           r.language, r.tags_json AS tagsJson, r.evidence_refs_json AS evidenceRefsJson,
+           r.source_updated_at AS sourceUpdatedAt, s.name AS sourceName
+      FROM discovery_records r
+      JOIN discovery_sources s ON s.id = r.source_id
+     WHERE r.verification_status = 'verified'
+       AND r.license IS NOT NULL AND length(trim(r.license)) > 0
+       AND r.source_url LIKE 'https://%'
+       AND s.enabled = 1
+     ORDER BY r.id ASC
+  `).all() as Array<Record<string, unknown>>;
+
+  const headers = {
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    'Content-Type': 'application/json',
+  };
+  const hideResponse = await fetch(`${baseUrl}/rest/v1/showroom_records?is_published=eq.true`, {
+    method: 'PATCH',
+    headers: { ...headers, Prefer: 'return=minimal' },
+    body: JSON.stringify({ is_published: false }),
+  });
+  if (!hideResponse.ok) {
+    throw new Error(`Showroom stale-record withdrawal failed (HTTP ${hideResponse.status})`);
+  }
+
+  let published = 0;
+  let batches = 0;
+  const publishedAt = new Date().toISOString();
+  for (let offset = 0; offset < rows.length; offset += SHOWROOM_SYNC_BATCH_SIZE) {
+    const batch = rows.slice(offset, offset + SHOWROOM_SYNC_BATCH_SIZE).map(row => ({
+      source_id: String(row.sourceId),
+      external_id: String(row.externalId),
+      kind: String(row.kind),
+      name: String(row.name),
+      description: String(row.description ?? ''),
+      source_url: String(row.sourceUrl),
+      license: String(row.license),
+      source_name: String(row.sourceName),
+      language: String(row.language ?? 'und'),
+      tags: parseJsonArray(row.tagsJson),
+      evidence_refs: parseJsonArray(row.evidenceRefsJson),
+      schema_version: String(row.schemaVersion ?? '1.0.0'),
+      content_hash: String(row.contentHash || createHash('sha256').update(JSON.stringify([row.sourceId, row.externalId, row.kind, row.name, row.description, row.sourceUrl, row.license])).digest('hex')),
+      verification_status: 'verified',
+      is_published: true,
+      source_updated_at: typeof row.sourceUpdatedAt === 'string' ? row.sourceUpdatedAt : null,
+      published_at: publishedAt,
+    }));
+    const response = await fetch(
+      `${baseUrl}/rest/v1/showroom_records?on_conflict=source_id%2Cexternal_id`,
+      {
+        method: 'POST',
+        headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(batch),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Showroom publish batch ${batches + 1} failed (HTTP ${response.status})`);
+    }
+    published += batch.length;
+    batches += 1;
+  }
+  return { eligible: rows.length, published, batches };
+}
+
 
 export const discoveryRouter = Router();
 
@@ -34,6 +124,18 @@ const recordSchema = z.object({
 }).strict();
 
 // All discovery routes are mounted behind dashboard authentication.
+discoveryRouter.post('/showroom/publish', async (_req: Request, res: Response) => {
+  try {
+    const result = await publishVerifiedShowroomRecords();
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ result, policy: 'Only currently verified, licensed HTTPS records are published; stale public rows are withdrawn first.' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown publish error';
+    const status = message === 'Showroom publishing is not configured' ? 503 : 502;
+    res.status(status).json({ error: { message } });
+  }
+});
+
 discoveryRouter.get('/sources', (_req: Request, res: Response) => {
   const rows = getDb().prepare(`
     SELECT id, name, homepage_url AS homepageUrl, adapter_status AS adapterStatus,

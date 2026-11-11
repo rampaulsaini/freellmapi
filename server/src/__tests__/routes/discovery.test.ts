@@ -142,4 +142,42 @@ describe('universal discovery catalogue foundation', () => {
       ...base, sourceId: 'github', sourceUrl: 'http://example.com/item',
     })).status).toBe(400);
   });
+  it('publishes only verified, licensed HTTPS records to the isolated Supabase showroom', async () => {
+    process.env.SUPABASE_URL = 'https://example.supabase.co';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-server-only-key';
+    getDb().prepare(`
+      INSERT INTO discovery_records (source_id, external_id, kind, name, description, source_url, license, verification_status)
+      VALUES
+        ('github', 'publish-me', 'tool', 'Verified Tool', 'Safe public description', 'https://github.com/example/tool', 'MIT', 'verified'),
+        ('github', 'not-verified', 'tool', 'Unverified Tool', 'Do not publish', 'https://github.com/example/other', 'MIT', 'unverified'),
+        ('github', 'no-license', 'tool', 'No License Tool', 'Do not publish', 'https://github.com/example/no-license', NULL, 'verified')
+    `).run();
+
+    const calls: Array<{ url: string; method: string; body: any }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        method: init?.method ?? 'GET',
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      });
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    const result = await request(app, 'POST', '/api/discovery/showroom/publish', {});
+    expect(result.status).toBe(200);
+    expect(result.body.result).toEqual({ eligible: 1, published: 1, batches: 1 });
+    expect(calls[0].method).toBe('PATCH');
+    expect(calls[1].method).toBe('POST');
+    expect(calls[1].body).toHaveLength(1);
+    expect(calls[1].body[0]).toMatchObject({
+      external_id: 'publish-me',
+      verification_status: 'verified',
+      is_published: true,
+      license: 'MIT',
+    });
+    expect(calls[1].body[0].content_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(calls[1].body[0].name).not.toBe('Unverified Tool');
+    expect(calls[1].body[0].name).not.toBe('No License Tool');
+  });
+
 });
