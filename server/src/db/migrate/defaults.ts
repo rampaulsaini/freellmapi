@@ -50,6 +50,7 @@ import * as customMediaEndpointIdentity from '../migrations/20261028_000001_cust
 import * as cloudflareNeuronUsage from '../migrations/20261104_000001_cloudflare_neuron_usage.js';
 import * as tenantIdentityFoundation from '../migrations/20261111_000001_tenant_identity_foundation.js';
 import * as conversationTenantScope from '../migrations/20261111_000002_conversation_tenant_scope.js';
+import * as clientProfileTenantScope from '../migrations/20261111_000003_client_profile_tenant_scope.js';
 
 export interface MigrationModule {
   up(db: Db): void;
@@ -162,4 +163,5 @@ export const DEFAULT_MIGRATIONS: readonly DefaultMigration[] = [
   { filename: CLOUDFLARE_NEURON_USAGE_FILENAME, module: cloudflareNeuronUsage },
   { filename: '20261111_000001_tenant_identity_foundation.ts', module: tenantIdentityFoundation },
   { filename: '20261111_000002_conversation_tenant_scope.ts', module: conversationTenantScope },
+  { filename: '20261111_000003_client_profile_tenant_scope.ts', module: clientProfileTenantScope },
 ];
