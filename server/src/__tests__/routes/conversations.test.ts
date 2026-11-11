@@ -50,6 +50,7 @@ describe('playground conversations', () => {
   let app: Express;
   let dashToken: string;
   let unifiedKey: string;
+  let secondDashToken: string;
 
   beforeAll(() => {
     process.env.ENCRYPTION_KEY = '0'.repeat(64);
@@ -57,6 +58,7 @@ describe('playground conversations', () => {
     app = createApp();
     unifiedKey = getUnifiedApiKey();
     dashToken = mintDashboardToken('conversations@example.com');
+    secondDashToken = mintDashboardToken('other-conversations@example.com');
   });
 
   beforeEach(() => {
@@ -180,6 +182,46 @@ describe('playground conversations', () => {
       expect((await request(app, 'PUT', `/api/conversations/${created.id}`, {
         token: dashToken, body: { title: 'gone' },
       })).status).toBe(404);
+    });
+  });
+
+  describe('tenant isolation', () => {
+    it('isolates list, read, update, and delete operations between dashboard users', async () => {
+      const first = await request(app, 'POST', '/api/conversations', {
+        token: dashToken, body: { title: 'private to first user', messages: [USER_TURN] },
+      });
+      expect(first.status).toBe(201);
+
+      const secondList = await request(app, 'GET', '/api/conversations', { token: secondDashToken });
+      expect(secondList.status).toBe(200);
+      expect(secondList.body).toEqual([]);
+
+      const secondRead = await request(app, 'GET', `/api/conversations/${first.body.id}`, { token: secondDashToken });
+      expect(secondRead.status).toBe(404);
+
+      const secondUpdate = await request(app, 'PUT', `/api/conversations/${first.body.id}`, {
+        token: secondDashToken, body: { title: 'attempted takeover' },
+      });
+      expect(secondUpdate.status).toBe(404);
+
+      const secondDelete = await request(app, 'DELETE', `/api/conversations/${first.body.id}`, { token: secondDashToken });
+      expect(secondDelete.status).toBe(404);
+
+      const firstRead = await request(app, 'GET', `/api/conversations/${first.body.id}`, { token: dashToken });
+      expect(firstRead.status).toBe(200);
+      expect(firstRead.body.title).toBe('private to first user');
+    });
+
+    it('does not expose legacy rows whose tenant ownership is unknown', async () => {
+      const result = getDb().prepare(`
+        INSERT INTO playground_conversations
+          (title, messages_json, model, system_prompt, created_at_ms, updated_at_ms)
+        VALUES ('legacy unassigned', '[]', NULL, NULL, 1, 1)
+      `).run();
+      const list = await request(app, 'GET', '/api/conversations', { token: dashToken });
+      expect(list.body.some((row: any) => row.id === Number(result.lastInsertRowid))).toBe(false);
+      const read = await request(app, 'GET', `/api/conversations/${Number(result.lastInsertRowid)}`, { token: dashToken });
+      expect(read.status).toBe(404);
     });
   });
 
