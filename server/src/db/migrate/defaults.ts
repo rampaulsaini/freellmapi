@@ -52,6 +52,7 @@ import * as tenantIdentityFoundation from '../migrations/20261111_000001_tenant_
 import * as conversationTenantScope from '../migrations/20261111_000002_conversation_tenant_scope.js';
 import * as clientProfileTenantScope from '../migrations/20261111_000003_client_profile_tenant_scope.js';
 import * as universalDiscovery from '../migrations/20261111_000004_universal_discovery_catalog.js';
+import * as githubDiscoverySync from '../migrations/20261111_000005_github_discovery_sync.js';
 
 export interface MigrationModule {
   up(db: Db): void;
@@ -166,4 +167,5 @@ export const DEFAULT_MIGRATIONS: readonly DefaultMigration[] = [
   { filename: '20261111_000002_conversation_tenant_scope.ts', module: conversationTenantScope },
   { filename: '20261111_000003_client_profile_tenant_scope.ts', module: clientProfileTenantScope },
   { filename: '20261111_000004_universal_discovery_catalog.ts', module: universalDiscovery },
+  { filename: '20261111_000005_github_discovery_sync.ts', module: githubDiscoverySync },
 ];
