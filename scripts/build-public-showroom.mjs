@@ -19,8 +19,8 @@ if (rawSupabaseUrl) {
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
     throw new Error('SHOWROOM_SUPABASE_URL must be an HTTPS project origin without credentials, path, query, or fragment.');
   }
-  if (!publishableKey.startsWith('sb_publishable_') && !publishableKey.startsWith('eyJ')) {
-    throw new Error('SHOWROOM_SUPABASE_PUBLISHABLE_KEY must be a Supabase publishable key (or legacy anon key).');
+  if (!publishableKey.startsWith('sb_publishable_')) {
+    throw new Error('SHOWROOM_SUPABASE_PUBLISHABLE_KEY must use the sb_publishable_ format; legacy JWT keys are not accepted in public builds.');
   }
   if (/[\r\n"'<>]/.test(publishableKey)) throw new Error('SHOWROOM_SUPABASE_PUBLISHABLE_KEY contains invalid characters.');
 }
