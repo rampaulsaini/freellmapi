@@ -43,6 +43,7 @@ import DecisionPage from '@/pages/DecisionPage'
 import MediaDetailPage from '@/pages/MediaDetailPage'
 import EmbeddingDetailPage from '@/pages/EmbeddingDetailPage'
 import AnalyticsPage from '@/pages/AnalyticsPage'
+import CatalogQualityPage from '@/pages/CatalogQualityPage'
 import LogsPage from '@/pages/LogsPage'
 import PremiumPage from '@/pages/PremiumPage'
 import NotFoundPage from '@/pages/NotFoundPage'
@@ -69,7 +70,8 @@ const queryClient = new QueryClient({
   }),
 })
 
-const navItems = [
+const navItems: { to: string; labelKey?: string; label?: string }[] = [
+  { to: '/catalog', label: 'Catalog Lab' },
   { to: '/models', labelKey: 'nav.models' },
   { to: '/playground', labelKey: 'nav.playground' },
   { to: '/keys', labelKey: 'nav.keys' },
@@ -280,7 +282,7 @@ function Navbar() {
                 // Split control: the label navigates, the chevron reveals the
                 // pages hiding behind it.
                 <div key={item.to} className="flex items-center gap-0.5">
-                  <NavItem to={item.to}>{t(item.labelKey)}</NavItem>
+                  <NavItem to={item.to}>{(item.label ?? t(item.labelKey!))}</NavItem>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       aria-label={t(menu.ariaKey)}
@@ -299,7 +301,7 @@ function Navbar() {
                 </div>
               ) : (
                 <NavItem key={item.to} to={item.to}>
-                  {t(item.labelKey)}
+                  {(item.label ?? t(item.labelKey!))}
                 </NavItem>
               )
             })}
@@ -359,7 +361,7 @@ function Navbar() {
                         <DropdownMenuSubTrigger
                           className={menu.isActive(location.pathname) ? 'bg-accent text-accent-foreground font-medium' : undefined}
                         >
-                          {t(item.labelKey)}
+                          {(item.label ?? t(item.labelKey!))}
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent>
                           {menu.items.map((entry) => (
@@ -375,7 +377,7 @@ function Navbar() {
                         onClick={() => navigate(item.to)}
                         className={location.pathname === item.to ? 'bg-accent text-accent-foreground font-medium' : undefined}
                       >
-                        {t(item.labelKey)}
+                        {(item.label ?? t(item.labelKey!))}
                       </DropdownMenuItem>
                     )
                   })}
@@ -479,6 +481,7 @@ function App() {
                     <Routes>
                       <Route path="/" element={<Navigate to="/models/chat" replace />} />
                       <Route path="/models" element={<Navigate to="/models/chat" replace />} />
+                      <Route path="/catalog" element={<CatalogQualityPage />} />
                       <Route path="/models/chat" element={<FallbackPage />} />
                       <Route path="/models/chat/:id" element={<ModelDetailPage />} />
                       <Route path="/models/fusion" element={<FusionPage />} />
