@@ -18,6 +18,7 @@ import { embeddingsRouter } from './routes/embeddings.js';
 import { mediaRouter } from './routes/media.js';
 import { searchRouter } from './routes/search.js';
 import { discoveryRouter } from './routes/discovery.js';
+import { showroomRouter } from './routes/showroom.js';
 import { decisionsRouter } from './routes/decisions.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { healthRouter } from './routes/health.js';
@@ -256,6 +257,8 @@ export function createApp(config?: Config) {
   // Per-client key management (#411). Dashboard-session gated like the rest of
   // /api — the profile keys it mints authenticate only the /v1 inference
   // surface and are never valid here.
+  // Public, read-only catalogue: only explicitly verified and licensed records.
+  app.use('/api/showroom', createProxyRateLimiter(cfg.proxyRateLimitRpm), showroomRouter);
   app.use('/api/client-profiles', requireAuth, clientProfilesRouter);
   // Saved Playground transcripts (the chat sidebar). Dashboard-session gated
   // like every other admin route; the unified /v1 key does not open it.
