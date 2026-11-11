@@ -97,7 +97,7 @@ export default function CatalogQualityPage() {
   })
 
   const platformOptions = useMemo(
-    () => [...new Set(models.map(model => model.platform))].sort((a, b) => a.localeCompare(b)),
+    () => [...new Set(models.filter(model => model.platform !== 'custom').map(model => model.platform))].sort((a, b) => a.localeCompare(b)),
     [models],
   )
 
