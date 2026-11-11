@@ -25,6 +25,8 @@ type CatalogModel = {
   hasProvider: boolean
 }
 
+type ImportRow = { platform: string; modelId: string; displayName?: string; contextWindow?: number; supportsVision: boolean; supportsTools: boolean; line: number }
+
 type Filters = {
   query: string
   platform: string
@@ -78,6 +80,57 @@ function exportCsv(rows: CatalogModel[]) {
   URL.revokeObjectURL(url)
 }
 
+
+function parseModelCsv(input: string): ImportRow[] {
+  const records: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let quoted = false
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i]
+    if (char === '"') {
+      if (quoted && input[i + 1] === '"') { cell += '"'; i++ }
+      else quoted = !quoted
+    } else if (char === ',' && !quoted) {
+      row.push(cell); cell = ''
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && input[i + 1] === '\n') i++
+      row.push(cell); cell = ''
+      if (row.some(value => value.trim())) records.push(row)
+      row = []
+    } else {
+      cell += char
+    }
+  }
+  row.push(cell)
+  if (row.some(value => value.trim())) records.push(row)
+  if (records.length < 2) return []
+  const headers = records[0].map(value => value.trim().toLowerCase().replace(/[ _-]/g, ''))
+  const index = (...names: string[]) => headers.findIndex(header => names.includes(header))
+  const platformIndex = index('platform', 'provider')
+  const idIndex = index('modelid', 'id', 'model')
+  const nameIndex = index('displayname', 'name')
+  const contextIndex = index('contextwindow', 'context')
+  const visionIndex = index('supportsvision', 'vision')
+  const toolsIndex = index('supportstools', 'tools', 'tooluse')
+  if (platformIndex < 0 || idIndex < 0) throw new Error('CSV needs platform/provider and modelId/model columns.')
+  const truthy = (value: string) => ['1', 'true', 'yes', 'y'].includes(value.trim().toLowerCase())
+  return records.slice(1).map((values, offset) => {
+    const get = (column: number) => column < 0 ? '' : (values[column] ?? '').trim()
+    const contextRaw = get(contextIndex)
+    const context = contextRaw ? Number(contextRaw) : undefined
+    return {
+      platform: get(platformIndex),
+      modelId: get(idIndex),
+      ...(get(nameIndex) ? { displayName: get(nameIndex) } : {}),
+      ...(context && Number.isSafeInteger(context) && context > 0 ? { contextWindow: context } : {}),
+      supportsVision: truthy(get(visionIndex)),
+      supportsTools: truthy(get(toolsIndex)),
+      line: offset + 2,
+    }
+  })
+}
+
 export default function CatalogQualityPage() {
   const queryClient = useQueryClient()
   const [filters, setFilters] = useState<Filters>(initialFilters)
@@ -89,6 +142,10 @@ export default function CatalogQualityPage() {
   const [newContext, setNewContext] = useState('')
   const [newVision, setNewVision] = useState(false)
   const [newTools, setNewTools] = useState(true)
+  const [bulkRows, setBulkRows] = useState<ImportRow[]>([])
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 })
+  const [bulkReport, setBulkReport] = useState<string | null>(null)
 
   const { data: models = [], isLoading, isError, error, dataUpdatedAt, refetch, isFetching } = useQuery<CatalogModel[]>({
     queryKey: ['catalog-models'],
@@ -120,6 +177,7 @@ export default function CatalogQualityPage() {
     })
 
     return result.sort((a, b) => {
+      if (filters.sort === 'recent') return b.id - a.id
       if (filters.sort === 'speed') return (a.speedRank || 9999) - (b.speedRank || 9999)
       if (filters.sort === 'name') return a.displayName.localeCompare(b.displayName)
       if (filters.sort === 'provider') return a.platform.localeCompare(b.platform) || a.displayName.localeCompare(b.displayName)
@@ -151,6 +209,71 @@ export default function CatalogQualityPage() {
       setNewTools(true)
     },
   })
+
+
+  const handleCsvFile = async (file?: File) => {
+    if (!file) return
+    setBulkReport(null)
+    try {
+      const rows = parseModelCsv(await file.text())
+      if (rows.length > 1000) throw new Error('One import is limited to 1,000 rows. Split larger files into batches.')
+      if (rows.length === 0) throw new Error('No model rows found. Add a header row and at least one model.')
+      setBulkRows(rows)
+      setBulkProgress({ done: 0, total: rows.length })
+    } catch (cause) {
+      setBulkRows([])
+      setBulkReport(cause instanceof Error ? cause.message : 'Could not read this CSV file.')
+    }
+  }
+
+  const importCsvRows = async () => {
+    if (!bulkRows.length || bulkBusy) return
+    setBulkBusy(true)
+    setBulkReport(null)
+    const knownProviders = new Set(platformOptions)
+    const existing = new Set(models.map(model => model.platform.toLowerCase() + '::' + model.modelId.toLowerCase()))
+    const seen = new Set<string>()
+    const candidates = bulkRows.filter(row => {
+      const key = row.platform.toLowerCase() + '::' + row.modelId.toLowerCase()
+      if (!row.platform || !row.modelId || !knownProviders.has(row.platform) || existing.has(key) || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    let added = 0
+    let failed = 0
+    let skipped = bulkRows.length - candidates.length
+    let cursor = 0
+    setBulkProgress({ done: 0, total: bulkRows.length })
+    await Promise.all(Array.from({ length: 4 }, async () => {
+      while (cursor < candidates.length) {
+        const row = candidates[cursor++]
+        try {
+          await apiFetch('/api/models', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              platform: row.platform,
+              modelId: row.modelId,
+              ...(row.displayName ? { displayName: row.displayName } : {}),
+              ...(row.contextWindow ? { contextWindow: row.contextWindow } : {}),
+              supportsVision: row.supportsVision,
+              supportsTools: row.supportsTools,
+            }),
+          })
+          added++
+        } catch {
+          failed++
+        } finally {
+          setBulkProgress(current => ({ ...current, done: current.done + 1 }))
+        }
+      }
+    }))
+    skipped += bulkRows.length - candidates.length
+    await queryClient.invalidateQueries({ queryKey: ['catalog-models'] })
+    setBulkReport('Import complete: ' + added + ' added, ' + skipped + ' skipped (duplicates/unknown providers/invalid rows), ' + failed + ' failed.')
+    setBulkRows([])
+    setBulkBusy(false)
+  }
 
   const update = (patch: Partial<Filters>) => {
     setFilters(current => ({ ...current, ...patch }))
@@ -196,6 +319,10 @@ export default function CatalogQualityPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-medium hover:bg-muted">
+              <Plus className="size-4" /> Import CSV (up to 1,000)
+              <input type="file" accept=".csv,text/csv" className="sr-only" disabled={bulkBusy} onChange={event => { void handleCsvFile(event.target.files?.[0]); event.currentTarget.value = '' }} />
+            </label>
             <Button variant="outline" size="sm" onClick={() => exportCsv(filtered)} disabled={filtered.length === 0}>
               <Download className="size-4" /> Export CSV
             </Button>
@@ -261,6 +388,7 @@ export default function CatalogQualityPage() {
           <label>
             <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Sort results</span>
             <select value={filters.sort} onChange={event => update({ sort: event.target.value })} className="h-10 w-full rounded-lg border bg-background px-3 text-sm">
+              <option value="recent">Recently registered</option>
               <option value="intelligence">Intelligence rank</option>
               <option value="speed">Speed rank</option>
               <option value="context">Largest context first</option>
@@ -275,6 +403,32 @@ export default function CatalogQualityPage() {
           <button type="button" className="font-medium text-foreground underline underline-offset-4" onClick={() => update(initialFilters)}>Clear filters</button>
         </div>
       </section>
+
+
+      {(bulkRows.length > 0 || bulkReport) && (
+        <section className="rounded-xl border bg-card p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-semibold text-sm">Bulk model import</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Preview first. Only providers already present in this instance can be imported with this quick tool.</p>
+            </div>
+            {bulkRows.length > 0 && <Button size="sm" onClick={() => void importCsvRows()} disabled={bulkBusy}>{bulkBusy ? 'Importing…' : 'Import ' + bulkRows.length + ' CSV rows'}</Button>}
+          </div>
+          {bulkRows.length > 0 && (
+            <>
+              <p className="text-xs text-muted-foreground">{bulkRows.length.toLocaleString()} rows read · {bulkProgress.done.toLocaleString()} / {bulkProgress.total.toLocaleString()} processed</p>
+              <div className="max-h-48 overflow-auto rounded-lg border">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-muted"><tr><th className="p-2 text-left">Line</th><th className="p-2 text-left">Provider</th><th className="p-2 text-left">Model ID</th><th className="p-2 text-left">Capabilities</th></tr></thead>
+                  <tbody>{bulkRows.slice(0, 12).map(row => <tr key={row.line} className="border-t"><td className="p-2">{row.line}</td><td className="p-2">{row.platform || '—'}</td><td className="p-2">{row.modelId || '—'}</td><td className="p-2">{[row.supportsVision ? 'Vision' : '', row.supportsTools ? 'Tools' : ''].filter(Boolean).join(' · ') || '—'}</td></tr>)}</tbody>
+                </table>
+              </div>
+              {bulkRows.length > 12 && <p className="text-xs text-muted-foreground">Showing first 12 rows in preview; all {bulkRows.length.toLocaleString()} rows are considered on import.</p>}
+            </>
+          )}
+          {bulkReport && <p role="status" className="text-sm">{bulkReport}</p>}
+        </section>
+      )}
 
       {isLoading && <div className="rounded-xl border p-8 text-center text-sm text-muted-foreground">Loading registered models…</div>}
       {isError && (
