@@ -6,6 +6,7 @@ import { resolveTenantContext } from '../../services/tenant-context.js';
 describe('resolveTenantContext', () => {
   let ownerId: number;
   let otherUserId: number;
+  let suspendedOnlyUserId: number;
 
   beforeAll(() => {
     process.env.ENCRYPTION_KEY = '0'.repeat(64);
@@ -13,6 +14,7 @@ describe('resolveTenantContext', () => {
 
     ownerId = createUser('tenant-owner@example.test', 'strong-test-password').userId;
     otherUserId = createUser('tenant-other@example.test', 'strong-test-password').userId;
+    suspendedOnlyUserId = createUser('tenant-suspended@example.test', 'strong-test-password').userId;
 
     getDb().prepare(`
       INSERT INTO tenants (id, name, slug, status, created_at_ms)
@@ -26,7 +28,7 @@ describe('resolveTenantContext', () => {
       VALUES ('tenant-owner', ?, 'owner', 1),
              ('tenant-other', ?, 'admin', 1),
              ('tenant-suspended', ?, 'owner', 1)
-    `).run(ownerId, otherUserId, ownerId);
+    `).run(ownerId, otherUserId, suspendedOnlyUserId);
   });
 
   it('resolves only the authenticated user membership', () => {
@@ -50,10 +52,7 @@ describe('resolveTenantContext', () => {
   });
 
   it('does not return suspended workspaces', () => {
-    const membership = getDb().prepare(
-      'SELECT user_id FROM tenant_memberships WHERE tenant_id = ?',
-    ).get('tenant-suspended') as { user_id: number };
-    expect(resolveTenantContext(membership.user_id)).toBeNull();
+    expect(resolveTenantContext(suspendedOnlyUserId)).toBeNull();
   });
 
   it('rejects invalid user identifiers without querying another tenant', () => {
