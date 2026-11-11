@@ -83,6 +83,16 @@ discoveryRouter.post('/records', (req: Request, res: Response) => {
       source_id, external_id, kind, name, description, source_url, license, metadata_json
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(source_id, external_id) DO UPDATE SET
+      verification_status = CASE
+        WHEN discovery_records.kind IS NOT excluded.kind
+          OR discovery_records.name IS NOT excluded.name
+          OR discovery_records.description IS NOT excluded.description
+          OR discovery_records.source_url IS NOT excluded.source_url
+          OR discovery_records.license IS NOT excluded.license
+          OR discovery_records.metadata_json IS NOT excluded.metadata_json
+        THEN 'unverified'
+        ELSE discovery_records.verification_status
+      END,
       kind = excluded.kind, name = excluded.name, description = excluded.description,
       source_url = excluded.source_url, license = excluded.license,
       metadata_json = excluded.metadata_json, last_seen_at = datetime('now')
