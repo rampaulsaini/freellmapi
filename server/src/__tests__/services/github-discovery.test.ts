@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { getDb, initDb } from '../../db/index.js';
 import {
   GitHubDiscoveryError,
@@ -10,10 +10,6 @@ describe('GitHub public repository discovery adapter', () => {
   beforeEach(() => {
     process.env.ENCRYPTION_KEY = '0'.repeat(64);
     initDb(':memory:');
-  });
-
-  afterEach(() => {
-    // No global fetch replacement is used; each test injects its own fetch.
   });
 
   it('normalizes public repository results and stores provenance in the catalogue', async () => {
