@@ -153,6 +153,7 @@ describe('migration round trip', () => {
         '20261028_000001_custom_media_endpoint_identity.ts',
         CLOUDFLARE_NEURON_USAGE_FILENAME,
         TENANT_IDENTITY_FOUNDATION_FILENAME,
+        '20261111_000002_conversation_tenant_scope.ts',
       ]);
     } finally {
       db.close();
