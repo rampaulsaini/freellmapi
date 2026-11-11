@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Activity, ArrowDownWideNarrow, CheckCircle2, CircleAlert, Database,
+  Activity, CheckCircle2, CircleAlert, Database,
   Download, Filter, Plus, RefreshCw, Search, ShieldCheck, X,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
