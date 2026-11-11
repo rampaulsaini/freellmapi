@@ -17,9 +17,9 @@ Choose one data source:
 Set these build-time variables:
 
 - `SHOWROOM_SUPABASE_URL`: the HTTPS Supabase project origin.
-- `SHOWROOM_SUPABASE_PUBLISHABLE_KEY`: the Supabase publishable key (or legacy anon key).
+- `SHOWROOM_SUPABASE_PUBLISHABLE_KEY`: the Supabase publishable key in `sb_publishable_` format. Legacy JWT keys are intentionally rejected by the public build.
 
-The generated browser config contains only the project URL and publishable/anon key. These keys are designed for public clients and are safe only with the least-privilege grants and RLS policies verified on the table. Never put a service-role or secret key in this static site.
+The generated browser config contains only the project URL and the `sb_publishable_` key. These keys are designed for public clients and are safe only with the least-privilege grants and RLS policies verified on the table. Never put a service-role or secret key in this static site.
 
 The frontend reads only `public.showroom_records` through the Supabase Data API, filtering for `is_published=true` and `verification_status=verified`. RLS further limits visible rows to eligible records. The public role has SELECT only; it cannot write. The page uses bounded pagination and does not collect visitor data.
 
