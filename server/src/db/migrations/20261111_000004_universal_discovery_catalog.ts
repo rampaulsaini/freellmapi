@@ -42,7 +42,8 @@ export function up(db: Db): void {
     INSERT OR IGNORE INTO discovery_sources (id, name, homepage_url, adapter_status, created_at, updated_at)
     VALUES (?, ?, ?, ?, '2026-11-11T00:00:00.000Z', '2026-11-11T00:00:00.000Z')
   `);
-  insert.run('github', 'GitHub', 'https://github.com', 'available');
+  // The normalized ingestion endpoint exists, but no live GitHub Search API adapter is wired yet.
+  insert.run('github', 'GitHub', 'https://github.com', 'manual');
   insert.run('google-ai', 'Google AI for Developers', 'https://ai.google.dev', 'manual');
   insert.run('nvidia-build', 'NVIDIA Build', 'https://build.nvidia.com', 'manual');
   insert.run('huggingface', 'Hugging Face', 'https://huggingface.co', 'manual');
