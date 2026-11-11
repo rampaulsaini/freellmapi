@@ -31,7 +31,7 @@ describe('resolveTenantContext', () => {
     `).run(ownerId, otherUserId, suspendedOnlyUserId);
   });
 
-  it('resolves only the authenticated user membership', () => {
+  it('resolves the sole active membership for each authenticated user', () => {
     expect(resolveTenantContext(ownerId)).toEqual({
       tenantId: 'tenant-owner',
       tenantName: 'Owner workspace',
@@ -53,6 +53,19 @@ describe('resolveTenantContext', () => {
 
   it('does not return suspended workspaces', () => {
     expect(resolveTenantContext(suspendedOnlyUserId)).toBeNull();
+  });
+
+  it('fails closed when a user has multiple active memberships', () => {
+    getDb().prepare(`
+      INSERT INTO tenants (id, name, slug, status, created_at_ms)
+      VALUES ('tenant-owner-second', 'Second owner workspace', 'tenant-owner-second', 'active', 2)
+    `).run();
+    getDb().prepare(`
+      INSERT INTO tenant_memberships (tenant_id, user_id, role, created_at_ms)
+      VALUES ('tenant-owner-second', ?, 'admin', 2)
+    `).run(ownerId);
+
+    expect(resolveTenantContext(ownerId)).toBeNull();
   });
 
   it('rejects invalid user identifiers without querying another tenant', () => {
