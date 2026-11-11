@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { getDb } from '../db/index.js';
+import { GitHubDiscoveryError, syncGitHubRepositories } from '../services/github-discovery.js';
 
 export const discoveryRouter = Router();
 
@@ -27,7 +28,7 @@ const recordSchema = z.object({
   metadata: z.record(z.unknown()).optional().default({}),
 }).strict();
 
-// Read-only dashboard endpoints; all routes are mounted behind dashboard auth.
+// All discovery routes are mounted behind dashboard authentication.
 discoveryRouter.get('/sources', (_req: Request, res: Response) => {
   const rows = getDb().prepare(`
     SELECT id, name, homepage_url AS homepageUrl, adapter_status AS adapterStatus,
@@ -36,6 +37,26 @@ discoveryRouter.get('/sources', (_req: Request, res: Response) => {
   `).all();
   res.setHeader('Cache-Control', 'no-store');
   res.json({ sources: rows });
+});
+
+discoveryRouter.post('/github/sync', async (req: Request, res: Response) => {
+  const parsed = z.object({ query: z.string().trim().min(1).max(180).optional() }).strict().safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: { message: 'Invalid GitHub search request' } });
+    return;
+  }
+  try {
+    const result = await syncGitHubRepositories(getDb(), { query: parsed.data.query });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ sourceId: 'github', result, limits: { maxPages: 3, perPage: 100, maxResults: 300 } });
+  } catch (error) {
+    if (error instanceof GitHubDiscoveryError) {
+      if (error.retryAfter) res.setHeader('Retry-After', error.retryAfter);
+      res.status(error.status).json({ error: { message: error.message } });
+      return;
+    }
+    res.status(502).json({ error: { message: 'GitHub discovery sync failed' } });
+  }
 });
 
 discoveryRouter.get('/records', (req: Request, res: Response) => {
@@ -69,8 +90,7 @@ discoveryRouter.get('/records', (req: Request, res: Response) => {
   res.json({ records: rows, page: { limit, offset } });
 });
 
-// Internal ingestion primitive. It accepts normalized records only; it never
-// crawls a submitted URL. Provider adapters must enforce their own API/ToS rules.
+// Normalized ingestion remains available for other trusted provider adapters.
 discoveryRouter.post('/records', (req: Request, res: Response) => {
   const parsed = recordSchema.safeParse(req.body);
   if (!parsed.success) {
