@@ -64,7 +64,7 @@ describe('universal discovery catalogue foundation', () => {
       description: 'Public repository metadata',
       sourceUrl: 'https://github.com/owner/repo',
       license: 'MIT',
-      metadata: { stars: 42 },
+      metadata: { stars: 42, details: { license: 'MIT', language: 'TS' } },
     };
     const first = await request(app, 'POST', '/api/discovery/records', record);
     expect(first.status).toBe(201);
@@ -75,7 +75,11 @@ describe('universal discovery catalogue foundation', () => {
       UPDATE discovery_records SET verification_status = 'verified'
        WHERE source_id = ? AND external_id = ?
     `).run(record.sourceId, record.externalId);
-    const unchanged = await request(app, 'POST', '/api/discovery/records', record);
+    const reorderedMetadata = {
+      ...record,
+      metadata: { details: { language: 'TS', license: 'MIT' }, stars: 42 },
+    };
+    const unchanged = await request(app, 'POST', '/api/discovery/records', reorderedMetadata);
     expect(unchanged.status).toBe(201);
     expect(unchanged.body.record.id).toBe(first.body.record.id);
     expect(unchanged.body.record.verificationStatus).toBe('verified');
@@ -84,7 +88,7 @@ describe('universal discovery catalogue foundation', () => {
     const changed = await request(app, 'POST', '/api/discovery/records', {
       ...record,
       name: 'Example Tool Updated',
-      metadata: { stars: 43 },
+      metadata: { stars: 43, details: { language: 'TS', license: 'MIT' } },
     });
     expect(changed.status).toBe(201);
     expect(changed.body.record.id).toBe(first.body.record.id);
