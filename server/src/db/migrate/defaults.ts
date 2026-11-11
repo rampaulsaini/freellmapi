@@ -48,6 +48,7 @@ import * as removeAurayProvider from '../migrations/20261019_000001_remove_auray
 import * as keyLastHealthyAt from '../migrations/20261020_000001_key_last_healthy_at.js';
 import * as customMediaEndpointIdentity from '../migrations/20261028_000001_custom_media_endpoint_identity.js';
 import * as cloudflareNeuronUsage from '../migrations/20261104_000001_cloudflare_neuron_usage.js';
+import * as tenantIdentityFoundation from '../migrations/20261111_000001_tenant_identity_foundation.js';
 
 export interface MigrationModule {
   up(db: Db): void;
@@ -158,4 +159,5 @@ export const DEFAULT_MIGRATIONS: readonly DefaultMigration[] = [
   { filename: KEY_LAST_HEALTHY_AT_FILENAME, module: keyLastHealthyAt },
   { filename: '20261028_000001_custom_media_endpoint_identity.ts', module: customMediaEndpointIdentity },
   { filename: CLOUDFLARE_NEURON_USAGE_FILENAME, module: cloudflareNeuronUsage },
+  { filename: '20261111_000001_tenant_identity_foundation.ts', module: tenantIdentityFoundation },
 ];
