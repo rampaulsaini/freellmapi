@@ -73,8 +73,8 @@ function snapshot(): string[] {
 
 function seed() {
   getDb().prepare('DELETE FROM api_keys').run();
-  addKey('google', 'goog-secret-1', 'first google');
-  addKey('google', 'goog-secret-2', 'second google');
+  addKey('google', 'google-test-secret-000001', 'first google');
+  addKey('google', 'google-test-secret-000002', 'second google');
   addKey('custom', 'lmstudio-secret', 'LM Studio', 'http://192.168.1.5:1234/v1');
   addKey('custom', 'vllm-secret', 'vLLM box', 'http://10.0.0.9:8000/v1');
   addKey('custom', 'no-key', 'Local no-auth', 'http://127.0.0.1:8080/v1');
@@ -101,15 +101,15 @@ describe('#687 custom endpoints survive an export/import round trip', () => {
     expect(text).toContain('CUSTOM_1_KEY=lmstudio-secret');
     expect(text).toContain('CUSTOM_2_BASE_URL=http://10.0.0.9:8000/v1');
     // Two Google keys must not collapse onto one name.
-    expect(text).toContain('GOOGLE_KEY=goog-secret-1');
-    expect(text).toContain('GOOGLE_KEY_2=goog-secret-2');
+    expect(text).toContain('GOOGLE_KEY=google-test-secret-000001');
+    expect(text).toContain('GOOGLE_KEY_2=google-test-secret-000002');
   });
 
   it('.csv carries base_url as a fourth column', async () => {
     const text = await exportText(app, 'csv');
     expect(text.split('\n')[0]).toBe('platform,key,label,base_url');
     expect(text).toContain('"custom","lmstudio-secret","LM Studio","http://192.168.1.5:1234/v1"');
-    expect(text).toContain('"google","goog-secret-1","first google",""');
+    expect(text).toContain('"google","google-test-secret-000001","first google",""');
   });
 
   it.each(['env', 'csv', 'json'])('a %s export re-imports into the same set of keys', async (format) => {
@@ -130,8 +130,8 @@ describe('#687 custom endpoints survive an export/import round trip', () => {
     // formula guard also writes =/+/-/@ labels with a leading quote.
     addKey('groq', 'gsk-eq', 'team=alpha');
     addKey('groq', 'gsk-formula', '=HYPERLINK("x")');
-    addKey('google', 'goog-comma', 'work, "primary"');
-    addKey('google', 'goog-dash', '-backup');
+    addKey('google', 'google-test-secret-comma-0001', 'work, "primary"');
+    addKey('google', 'google-test-secret-dash-0001', '-backup');
     const labelled = () => (getDb().prepare('SELECT platform, label, encrypted_key, iv, auth_tag FROM api_keys').all() as any[])
       .map(r => `${r.platform}|${r.label}|${decrypt(r.encrypted_key, r.iv, r.auth_tag)}`)
       .sort();
