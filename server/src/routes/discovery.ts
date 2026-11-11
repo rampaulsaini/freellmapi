@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
@@ -70,7 +71,7 @@ async function publishVerifiedShowroomRecords(): Promise<{ eligible: number; pub
       tags: parseJsonArray(row.tagsJson),
       evidence_refs: parseJsonArray(row.evidenceRefsJson),
       schema_version: String(row.schemaVersion ?? '1.0.0'),
-      content_hash: String(row.contentHash || 'legacy-unhashed'),
+      content_hash: String(row.contentHash || createHash('sha256').update(JSON.stringify([row.sourceId, row.externalId, row.kind, row.name, row.description, row.sourceUrl, row.license])).digest('hex')),
       verification_status: 'verified',
       is_published: true,
       source_updated_at: typeof row.sourceUpdatedAt === 'string' ? row.sourceUpdatedAt : null,
