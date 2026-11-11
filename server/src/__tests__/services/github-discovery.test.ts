@@ -66,6 +66,25 @@ describe('GitHub public repository discovery adapter', () => {
       sourceUpdatedAt: '2026-11-11T00:00:00Z',
       evidenceRefsJson: '[]',
     });
+
+    getDb().prepare(`
+      UPDATE discovery_records
+         SET verification_status = 'verified', evidence_refs_json = '["review:human-check"]'
+       WHERE source_id = 'github' AND external_id = 'sample/public-tool'
+    `).run();
+    await syncGitHubRepositories(getDb(), {
+      query: 'stars:>5',
+      fetchImpl,
+      now: () => new Date('2026-11-11T10:05:00.000Z'),
+    });
+    const reviewed = getDb().prepare(`
+      SELECT verification_status AS verificationStatus, evidence_refs_json AS evidenceRefsJson
+        FROM discovery_records WHERE source_id = 'github' AND external_id = 'sample/public-tool'
+    `).get();
+    expect(reviewed).toEqual({
+      verificationStatus: 'verified',
+      evidenceRefsJson: '["review:human-check"]',
+    });
   });
 
   it('uses a persisted checkpoint with a one-day overlap and bounded pagination', async () => {
