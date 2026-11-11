@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { getDb } from '../db/index.js';
+import { resolveTenantContext } from '../services/tenant-context.js';
 
 // Playground conversation storage, mounted under /api/conversations behind the
 // dashboard session gate like every other admin route. The Playground page is
@@ -128,10 +129,20 @@ function parseMessages(json: string): unknown[] {
   }
 }
 
-function getConversation(id: number): ConversationRow | undefined {
+function getConversation(id: number, tenantId: string): ConversationRow | undefined {
   return getDb()
-    .prepare('SELECT * FROM playground_conversations WHERE id = ?')
-    .get(id) as ConversationRow | undefined;
+    .prepare('SELECT * FROM playground_conversations WHERE id = ? AND tenant_id = ?')
+    .get(id, tenantId) as ConversationRow | undefined;
+}
+
+function getTenantId(req: Request, res: Response): string | null {
+  const user = (req as Request & { user?: { userId: number } }).user;
+  const context = user ? resolveTenantContext(user.userId) : null;
+  if (!context) {
+    res.status(403).json({ error: { message: 'An unambiguous active workspace is required', type: 'tenant_context_required' } });
+    return null;
+  }
+  return context.tenantId;
 }
 
 function parseId(req: Request, res: Response): number | null {
@@ -172,7 +183,9 @@ function serialiseMessages(messages: unknown[], res: Response): string | null {
 // small no matter how long the conversations are. json_array_length reads the
 // count straight out of the stored blob (SQLite's JSON1, present in both the
 // better-sqlite3 and node:sqlite drivers) instead of parsing every transcript.
-conversationsRouter.get('/', (_req: Request, res: Response) => {
+conversationsRouter.get('/', (req: Request, res: Response) => {
+  const tenantId = getTenantId(req, res);
+  if (!tenantId) return;
   const rows = getDb().prepare(`
     SELECT id,
            title,
@@ -181,8 +194,9 @@ conversationsRouter.get('/', (_req: Request, res: Response) => {
            created_at_ms,
            updated_at_ms
       FROM playground_conversations
+     WHERE tenant_id = ?
      ORDER BY updated_at_ms DESC, id DESC
-  `).all() as SummaryRow[];
+  `).all(tenantId) as SummaryRow[];
   res.json(rows.map(row => ({
     id: row.id,
     title: row.title,
@@ -194,14 +208,18 @@ conversationsRouter.get('/', (_req: Request, res: Response) => {
 });
 
 conversationsRouter.get('/:id', (req: Request, res: Response) => {
+  const tenantId = getTenantId(req, res);
+  if (!tenantId) return;
   const id = parseId(req, res);
   if (id === null) return;
-  const row = getConversation(id);
+  const row = getConversation(id, tenantId);
   if (!row) return notFound(res);
   res.json(toJson(row));
 });
 
 conversationsRouter.post('/', (req: Request, res: Response) => {
+  const tenantId = getTenantId(req, res);
+  if (!tenantId) return;
   const parsed = createSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({ error: { message: 'Invalid conversation' } });
@@ -213,9 +231,10 @@ conversationsRouter.post('/', (req: Request, res: Response) => {
   const now = Date.now();
   const info = getDb().prepare(`
     INSERT INTO playground_conversations
-      (title, messages_json, model, system_prompt, created_at_ms, updated_at_ms)
-    VALUES (?, ?, ?, ?, ?, ?)
+      (tenant_id, title, messages_json, model, system_prompt, created_at_ms, updated_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
+    tenantId,
     parsed.data.title ?? '',
     messagesJson,
     parsed.data.model ?? null,
@@ -223,10 +242,12 @@ conversationsRouter.post('/', (req: Request, res: Response) => {
     now,
     now,
   );
-  res.status(201).json(toJson(getConversation(Number(info.lastInsertRowid))!));
+  res.status(201).json(toJson(getConversation(Number(info.lastInsertRowid), tenantId)!));
 });
 
 conversationsRouter.put('/:id', (req: Request, res: Response) => {
+  const tenantId = getTenantId(req, res);
+  if (!tenantId) return;
   const id = parseId(req, res);
   if (id === null) return;
   const parsed = updateSchema.safeParse(req.body ?? {});
@@ -234,7 +255,7 @@ conversationsRouter.put('/:id', (req: Request, res: Response) => {
     res.status(400).json({ error: { message: 'Invalid conversation update' } });
     return;
   }
-  const row = getConversation(id);
+  const row = getConversation(id, tenantId);
   if (!row) return notFound(res);
 
   const { title, messages, model, systemPrompt } = parsed.data;
@@ -249,7 +270,7 @@ conversationsRouter.put('/:id', (req: Request, res: Response) => {
   getDb().prepare(`
     UPDATE playground_conversations
        SET title = ?, messages_json = ?, model = ?, system_prompt = ?, updated_at_ms = ?
-     WHERE id = ?
+     WHERE id = ? AND tenant_id = ?
   `).run(
     title ?? row.title,
     messagesJson,
@@ -257,14 +278,17 @@ conversationsRouter.put('/:id', (req: Request, res: Response) => {
     systemPrompt === undefined ? row.system_prompt : systemPrompt,
     Date.now(),
     id,
+    tenantId,
   );
-  res.json(toJson(getConversation(id)!));
+  res.json(toJson(getConversation(id, tenantId)!));
 });
 
 conversationsRouter.delete('/:id', (req: Request, res: Response) => {
+  const tenantId = getTenantId(req, res);
+  if (!tenantId) return;
   const id = parseId(req, res);
   if (id === null) return;
-  const info = getDb().prepare('DELETE FROM playground_conversations WHERE id = ?').run(id);
+  const info = getDb().prepare('DELETE FROM playground_conversations WHERE id = ? AND tenant_id = ?').run(id, tenantId);
   if (info.changes === 0) return notFound(res);
   res.json({ success: true });
 });

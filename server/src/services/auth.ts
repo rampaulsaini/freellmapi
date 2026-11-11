@@ -40,9 +40,27 @@ export function createUser(email: string, password: string): SessionUser {
     err.code = 'email_taken';
     throw err;
   }
-  const result = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)')
-    .run(normalized, hashPassword(password));
-  return { userId: Number(result.lastInsertRowid), email: normalized };
+  const provision = db.transaction(() => {
+    const result = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)')
+      .run(normalized, hashPassword(password));
+    const userId = Number(result.lastInsertRowid);
+
+    // Every new dashboard account receives a private workspace atomically.
+    const tenantId = `local-owner-${userId}`;
+    const now = Date.now();
+    db.prepare(`
+      INSERT INTO tenants (id, name, slug, status, created_at_ms)
+      VALUES (?, ?, ?, 'active', ?)
+    `).run(tenantId, normalized, tenantId, now);
+    db.prepare(`
+      INSERT INTO tenant_memberships (tenant_id, user_id, role, created_at_ms)
+      VALUES (?, ?, 'owner', ?)
+    `).run(tenantId, userId, now);
+
+    return { userId, email: normalized };
+  });
+
+  return provision();
 }
 
 /** Verify credentials. Returns the user on success, null on failure. */
