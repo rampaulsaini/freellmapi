@@ -14,6 +14,7 @@ import { initDb, getUnifiedApiKey } from '../../db/index.js';
 import { mintDashboardToken } from '../helpers/auth.js';
 
 let dashToken = '';
+let secondDashToken = '';
 
 async function request(
   app: Express,
@@ -67,6 +68,7 @@ describe('client profiles (#411)', () => {
     app = createApp();
     unifiedKey = getUnifiedApiKey();
     dashToken = mintDashboardToken('client-profiles@example.com');
+    secondDashToken = mintDashboardToken('other-client-profiles@example.com');
   });
 
   beforeEach(() => {
@@ -152,6 +154,35 @@ describe('client profiles (#411)', () => {
         token: created.key, body: { messages: [{ role: 'user', content: 'hi' }] },
       });
       expect(auth.status).toBe(401);
+    });
+  });
+
+
+  describe('tenant isolation', () => {
+    it('isolates profile list, update, rotation and deletion between dashboard users', async () => {
+      const created = await createProfile('private-profile');
+      const otherList = await request(app, 'GET', '/api/client-profiles', { token: secondDashToken });
+      expect(otherList.status).toBe(200);
+      expect(otherList.body.some((profile: any) => profile.id === created.id)).toBe(false);
+      for (const [method, path, body] of [
+        ['PATCH', `/api/client-profiles/${created.id}`, { name: 'stolen' }],
+        ['POST', `/api/client-profiles/${created.id}/rotate`, undefined],
+        ['DELETE', `/api/client-profiles/${created.id}`, undefined],
+      ] as const) {
+        const result = await request(app, method, path, { token: secondDashToken, body });
+        expect(result.status).toBe(404);
+      }
+      const ownerList = await request(app, 'GET', '/api/client-profiles', { token: dashToken });
+      expect(ownerList.body.some((profile: any) => profile.id === created.id)).toBe(true);
+    });
+    it('does not expose legacy profiles with unknown tenant ownership', async () => {
+      const { getDb } = await import('../../db/index.js');
+      const legacy = getDb().prepare(`
+        INSERT INTO client_profiles (name, token_hash, encrypted_key, iv, auth_tag)
+        VALUES ('legacy', 'legacy-hash', 'x', 'x', 'x')
+      `).run();
+      const list = await request(app, 'GET', '/api/client-profiles', { token: dashToken });
+      expect(list.body.some((profile: any) => profile.id === Number(legacy.lastInsertRowid))).toBe(false);
     });
   });
 

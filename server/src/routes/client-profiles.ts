@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getDb } from '../db/index.js';
 import { encrypt, decrypt, maskKey } from '../lib/crypto.js';
 import { mintClientProfileKey, hashClientProfileKey } from '../lib/system-prompt.js';
+import { resolveTenantContext } from '../services/tenant-context.js';
 
 // Client-profile CRUD (#411), mounted under /api/client-profiles behind the
 // dashboard session gate like every other admin route. The full `sk-cp-...`
@@ -32,6 +33,7 @@ const updateSchema = z.object({
 
 interface ProfileRow {
   id: number;
+  tenant_id: string | null;
   name: string;
   encrypted_key: string;
   iv: string;
@@ -62,8 +64,18 @@ function toJson(row: ProfileRow) {
   };
 }
 
-function getProfile(id: number): ProfileRow | undefined {
-  return getDb().prepare('SELECT * FROM client_profiles WHERE id = ?').get(id) as ProfileRow | undefined;
+function getProfile(id: number, tenantId: string): ProfileRow | undefined {
+  return getDb().prepare('SELECT * FROM client_profiles WHERE id = ? AND tenant_id = ?').get(id, tenantId) as ProfileRow | undefined;
+}
+
+function getTenantId(req: Request, res: Response): string | null {
+  const user = (req as Request & { user?: { userId: number } }).user;
+  const context = user ? resolveTenantContext(user.userId) : null;
+  if (!context) {
+    res.status(403).json({ error: { message: 'An unambiguous active workspace is required', type: 'tenant_context_required' } });
+    return null;
+  }
+  return context.tenantId;
 }
 
 function parseId(req: Request, res: Response): number | null {
@@ -79,12 +91,16 @@ function notFound(res: Response): void {
   res.status(404).json({ error: { message: 'Client profile not found' } });
 }
 
-clientProfilesRouter.get('/', (_req: Request, res: Response) => {
-  const rows = getDb().prepare('SELECT * FROM client_profiles ORDER BY id').all() as ProfileRow[];
+clientProfilesRouter.get('/', (req: Request, res: Response) => {
+  const tenantId = getTenantId(req, res);
+  if (!tenantId) return;
+  const rows = getDb().prepare('SELECT * FROM client_profiles WHERE tenant_id = ? ORDER BY id').all(tenantId) as ProfileRow[];
   res.json(rows.map(toJson));
 });
 
 clientProfilesRouter.post('/', (req: Request, res: Response) => {
+  const tenantId = getTenantId(req, res);
+  if (!tenantId) return;
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: { message: 'A profile name is required' } });
@@ -94,15 +110,17 @@ clientProfilesRouter.post('/', (req: Request, res: Response) => {
   const { encrypted, iv, authTag } = encrypt(key);
   const prompt = parsed.data.systemPrompt?.trim() || null;
   const info = getDb().prepare(`
-    INSERT INTO client_profiles (name, token_hash, encrypted_key, iv, auth_tag, system_prompt)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(parsed.data.name, hashClientProfileKey(key), encrypted, iv, authTag, prompt);
-  const row = getProfile(Number(info.lastInsertRowid))!;
+    INSERT INTO client_profiles (tenant_id, name, token_hash, encrypted_key, iv, auth_tag, system_prompt)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(tenantId, parsed.data.name, hashClientProfileKey(key), encrypted, iv, authTag, prompt);
+  const row = getProfile(Number(info.lastInsertRowid), tenantId)!;
   // The only time the full key leaves the server (besides rotate).
   res.status(201).json({ ...toJson(row), key });
 });
 
 clientProfilesRouter.patch('/:id', (req: Request, res: Response) => {
+  const tenantId = getTenantId(req, res);
+  if (!tenantId) return;
   const id = parseId(req, res);
   if (id === null) return;
   const parsed = updateSchema.safeParse(req.body);
@@ -110,7 +128,7 @@ clientProfilesRouter.patch('/:id', (req: Request, res: Response) => {
     res.status(400).json({ error: { message: 'Invalid profile update' } });
     return;
   }
-  const row = getProfile(id);
+  const row = getProfile(id, tenantId);
   if (!row) return notFound(res);
 
   const { name, systemPrompt, enabled } = parsed.data;
@@ -120,20 +138,23 @@ clientProfilesRouter.patch('/:id', (req: Request, res: Response) => {
   getDb().prepare(`
     UPDATE client_profiles
     SET name = ?, system_prompt = ?, enabled = ?, updated_at = datetime('now')
-    WHERE id = ?
+    WHERE id = ? AND tenant_id = ?
   `).run(
     name ?? row.name,
     nextPrompt,
     enabled === undefined ? row.enabled : (enabled ? 1 : 0),
     id,
+    tenantId,
   );
-  res.json(toJson(getProfile(id)!));
+  res.json(toJson(getProfile(id, tenantId)!));
 });
 
 clientProfilesRouter.post('/:id/rotate', (req: Request, res: Response) => {
+  const tenantId = getTenantId(req, res);
+  if (!tenantId) return;
   const id = parseId(req, res);
   if (id === null) return;
-  const row = getProfile(id);
+  const row = getProfile(id, tenantId);
   if (!row) return notFound(res);
 
   const key = mintClientProfileKey();
@@ -141,15 +162,17 @@ clientProfilesRouter.post('/:id/rotate', (req: Request, res: Response) => {
   getDb().prepare(`
     UPDATE client_profiles
     SET token_hash = ?, encrypted_key = ?, iv = ?, auth_tag = ?, updated_at = datetime('now')
-    WHERE id = ?
-  `).run(hashClientProfileKey(key), encrypted, iv, authTag, id);
-  res.json({ ...toJson(getProfile(id)!), key });
+    WHERE id = ? AND tenant_id = ?
+  `).run(hashClientProfileKey(key), encrypted, iv, authTag, id, tenantId);
+  res.json({ ...toJson(getProfile(id, tenantId)!), key });
 });
 
 clientProfilesRouter.delete('/:id', (req: Request, res: Response) => {
+  const tenantId = getTenantId(req, res);
+  if (!tenantId) return;
   const id = parseId(req, res);
   if (id === null) return;
-  const info = getDb().prepare('DELETE FROM client_profiles WHERE id = ?').run(id);
+  const info = getDb().prepare('DELETE FROM client_profiles WHERE id = ? AND tenant_id = ?').run(id, tenantId);
   if (info.changes === 0) return notFound(res);
   res.json({ success: true });
 });
