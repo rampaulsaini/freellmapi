@@ -56,6 +56,7 @@ const TENANT_IDENTITY_FOUNDATION_FILENAME = '20261111_000001_tenant_identity_fou
 const CLIENT_PROFILE_TENANT_SCOPE_FILENAME = '20261111_000003_client_profile_tenant_scope.ts';
 const UNIVERSAL_DISCOVERY_CATALOG_FILENAME = '20261111_000004_universal_discovery_catalog.ts';
 const GITHUB_DISCOVERY_SYNC_FILENAME = '20261111_000005_github_discovery_sync.ts';
+const DISCOVERY_VERSIONED_EVIDENCE_CONTRACT_FILENAME = '20261111_000006_discovery_versioned_evidence_contract.ts';
 
 interface SchemaRow {
   type: string;
@@ -160,6 +161,7 @@ describe('migration round trip', () => {
         CLIENT_PROFILE_TENANT_SCOPE_FILENAME,
         UNIVERSAL_DISCOVERY_CATALOG_FILENAME,
         GITHUB_DISCOVERY_SYNC_FILENAME,
+        DISCOVERY_VERSIONED_EVIDENCE_CONTRACT_FILENAME,
       ]);
     } finally {
       db.close();
