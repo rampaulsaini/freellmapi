@@ -49,7 +49,7 @@ describe('universal discovery catalogue foundation', () => {
     const result = await request(app, 'GET', '/api/discovery/sources');
     expect(result.status).toBe(200);
     expect(result.body.sources).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'github', adapterStatus: 'available' }),
+      expect.objectContaining({ id: 'github', adapterStatus: 'manual' }),
       expect.objectContaining({ id: 'google-ai', adapterStatus: 'manual' }),
       expect.objectContaining({ id: 'nvidia-build', adapterStatus: 'manual' }),
     ]));
