@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Express } from 'express';
 import { createApp } from '../../app.js';
-import { initDb } from '../../db/index.js';
+import { getDb, initDb } from '../../db/index.js';
 import { mintDashboardToken, isGatedApiPath } from '../helpers/auth.js';
 
 const realFetch = globalThis.fetch;
@@ -55,7 +55,7 @@ describe('universal discovery catalogue foundation', () => {
     ]));
   });
 
-  it('ingests normalized records idempotently and never marks them verified', async () => {
+  it('ingests normalized records idempotently and resets verification when source data changes', async () => {
     const record = {
       sourceId: 'github',
       externalId: 'owner/repo',
@@ -67,15 +67,32 @@ describe('universal discovery catalogue foundation', () => {
       metadata: { stars: 42 },
     };
     const first = await request(app, 'POST', '/api/discovery/records', record);
-    const second = await request(app, 'POST', '/api/discovery/records', record);
     expect(first.status).toBe(201);
-    expect(second.status).toBe(201);
-    expect(second.body.record.id).toBe(first.body.record.id);
-    expect(second.body.record.verificationStatus).toBe('unverified');
+    expect(first.body.record.verificationStatus).toBe('unverified');
+
+    // A fresh observation with identical data must preserve a human review.
+    getDb().prepare(`
+      UPDATE discovery_records SET verification_status = 'verified'
+       WHERE source_id = ? AND external_id = ?
+    `).run(record.sourceId, record.externalId);
+    const unchanged = await request(app, 'POST', '/api/discovery/records', record);
+    expect(unchanged.status).toBe(201);
+    expect(unchanged.body.record.id).toBe(first.body.record.id);
+    expect(unchanged.body.record.verificationStatus).toBe('verified');
+
+    // Any material source-data change invalidates the previous verification.
+    const changed = await request(app, 'POST', '/api/discovery/records', {
+      ...record,
+      name: 'Example Tool Updated',
+      metadata: { stars: 43 },
+    });
+    expect(changed.status).toBe(201);
+    expect(changed.body.record.id).toBe(first.body.record.id);
+    expect(changed.body.record.verificationStatus).toBe('unverified');
 
     const listed = await request(app, 'GET', '/api/discovery/records?kind=tool');
     expect(listed.body.records).toHaveLength(1);
-    expect(listed.body.records[0].sourceUrl).toBe(record.sourceUrl);
+    expect(listed.body.records[0].name).toBe('Example Tool Updated');
   });
 
   it('rejects unknown sources and non-HTTPS source URLs', async () => {
