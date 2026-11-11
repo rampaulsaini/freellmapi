@@ -268,7 +268,7 @@ export default function CatalogQualityPage() {
         }
       }
     }))
-    skipped += bulkRows.length - candidates.length
+    setBulkProgress({ done: bulkRows.length, total: bulkRows.length })
     await queryClient.invalidateQueries({ queryKey: ['catalog-models'] })
     setBulkReport('Import complete: ' + added + ' added, ' + skipped + ' skipped (duplicates/unknown providers/invalid rows), ' + failed + ' failed.')
     setBulkRows([])
