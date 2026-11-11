@@ -5,6 +5,17 @@ import { getDb } from '../db/index.js';
 
 export const discoveryRouter = Router();
 
+// Canonicalize object keys so provider key-order differences do not look like
+// material source changes and unnecessarily invalidate a human verification.
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
 const recordSchema = z.object({
   sourceId: z.string().trim().min(1).max(80),
   externalId: z.string().trim().min(1).max(300),
@@ -67,7 +78,7 @@ discoveryRouter.post('/records', (req: Request, res: Response) => {
     return;
   }
   const item = parsed.data;
-  const metadataJson = JSON.stringify(item.metadata);
+  const metadataJson = stableJson(item.metadata);
   if (Buffer.byteLength(metadataJson, 'utf8') > 16 * 1024) {
     res.status(400).json({ error: { message: 'Metadata must be 16 KB or smaller' } });
     return;
