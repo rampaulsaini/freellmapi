@@ -14,6 +14,17 @@ Set `SHOWROOM_API_BASE_URL` to the HTTPS origin/base URL of the separately deplo
 
 The API deployment must separately allow the static site's exact origin in `DASHBOARD_ORIGINS` for browser CORS. The API's `GET /api/showroom/records` route is read-only and only returns records marked verified with a non-empty declared license, an HTTPS source URL, and an enabled source.
 
+## Publishing verified records to the isolated database
+
+The authenticated admin endpoint `POST /api/discovery/showroom/publish` copies only currently verified records with a non-empty license, an HTTPS source URL, and an enabled source into the separate Supabase `showroom_records` table. It withdraws previously published rows before rebuilding the eligible public set. The endpoint requires a dashboard session.
+
+Configure these variables only on the trusted FreeLLMAPI server (never in this static site's build variables or browser code):
+
+- `SUPABASE_URL`: the Supabase project URL.
+- `SUPABASE_SERVICE_ROLE_KEY`: the server-only service-role secret. Never expose it to clients, commit it, or place it in `public-showroom/config.js`.
+
+The publisher uses bounded batches and an idempotent upsert keyed by source and external ID. If the variables are absent, publishing returns a configuration error and does not publish data. The isolated database's anonymous role has SELECT-only access, constrained by RLS; writes are server-side only.
+
 ## Trust and scope
 
 The “verified” label reports the catalogue's recorded review state; it is not an independent audit or legal certification of a license. The site has no login, signup, customer data collection, enquiry form, proposal, payment, or delivery workflow.
