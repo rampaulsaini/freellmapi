@@ -156,7 +156,7 @@ export async function syncGitHubRepositories(
           source_url = excluded.source_url, license = excluded.license, metadata_json = excluded.metadata_json,
           schema_version = excluded.schema_version, content_hash = excluded.content_hash,
           language = excluded.language, tags_json = excluded.tags_json,
-          source_updated_at = excluded.source_updated_at, evidence_refs_json = excluded.evidence_refs_json,
+          source_updated_at = excluded.source_updated_at,
           last_synced_at = datetime('now'), last_seen_at = datetime('now')
       `).run(
         externalId, name, description, sourceUrl, license, metadata,
