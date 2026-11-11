@@ -51,6 +51,7 @@ import * as cloudflareNeuronUsage from '../migrations/20261104_000001_cloudflare
 import * as tenantIdentityFoundation from '../migrations/20261111_000001_tenant_identity_foundation.js';
 import * as conversationTenantScope from '../migrations/20261111_000002_conversation_tenant_scope.js';
 import * as clientProfileTenantScope from '../migrations/20261111_000003_client_profile_tenant_scope.js';
+import * as universalDiscovery from '../migrations/20261111_000004_universal_discovery_catalog.js';
 
 export interface MigrationModule {
   up(db: Db): void;
@@ -164,4 +165,5 @@ export const DEFAULT_MIGRATIONS: readonly DefaultMigration[] = [
   { filename: '20261111_000001_tenant_identity_foundation.ts', module: tenantIdentityFoundation },
   { filename: '20261111_000002_conversation_tenant_scope.ts', module: conversationTenantScope },
   { filename: '20261111_000003_client_profile_tenant_scope.ts', module: clientProfileTenantScope },
+  { filename: '20261111_000004_universal_discovery_catalog.ts', module: universalDiscovery },
 ];
