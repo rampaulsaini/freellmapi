@@ -8,7 +8,7 @@ export function up(db: Db): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     UPDATE discovery_sources
-       SET adapter_status = 'available', updated_at = datetime('now')
+       SET adapter_status = 'available'
      WHERE id = 'github' AND enabled = 1;
   `);
 }
