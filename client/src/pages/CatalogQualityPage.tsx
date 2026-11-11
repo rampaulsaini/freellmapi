@@ -410,7 +410,7 @@ export default function CatalogQualityPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold text-sm">Bulk model import</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Preview first. Only providers already present in this instance can be imported with this quick tool.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Preview first. CSV headers: platform, modelId, displayName, contextWindow, supportsVision, supportsTools. Only providers already present in this instance can be imported with this quick tool.</p>
             </div>
             {bulkRows.length > 0 && <Button size="sm" onClick={() => void importCsvRows()} disabled={bulkBusy}>{bulkBusy ? 'Importing…' : 'Import ' + bulkRows.length + ' CSV rows'}</Button>}
           </div>
