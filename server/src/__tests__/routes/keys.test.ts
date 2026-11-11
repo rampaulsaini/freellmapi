@@ -227,6 +227,16 @@ describe('Keys API', () => {
     expect(getDb().prepare('SELECT COUNT(*) AS n FROM models WHERE platform = ?').get(platform)).toEqual({ n: 0 });
   });
 
+  it('POST /api/keys rejects malformed Google API key input before storing it', async () => {
+    const { status, body } = await request(app, 'POST', '/api/keys', {
+      platform: 'google',
+      key: 'AIza' + 'x'.repeat(380) + ' pasted text',
+    });
+    expect(status).toBe(400);
+    expect(body.error.message).toMatch(/Google API key must be a single/i);
+    expect(getDb().prepare("SELECT COUNT(*) AS n FROM api_keys WHERE platform = 'google'").get()).toEqual({ n: 0 });
+  });
+
   it('POST /api/keys rejects missing key', async () => {
     const { status } = await request(app, 'POST', '/api/keys', {
       platform: 'groq',
@@ -508,6 +518,16 @@ describe('Keys API', () => {
       ]);
       expect(body.total).toBe(3);
       expect(body.duplicates).toBe(0);
+    });
+
+    it('rejects malformed Google keys in selected imports without storing them', async () => {
+      const { status, body } = await request(app, 'POST', '/api/keys/import-selected', {
+        keys: [{ keyName: 'GOOGLE_API_KEY', keyValue: 'AIza' + 'x'.repeat(380) + '\\nextra', platform: 'google' }],
+      });
+      expect(status).toBe(200);
+      expect(body.imported).toBe(0);
+      expect(body.errors[0].error).toMatch(/Google API key must be a single/i);
+      expect(getDb().prepare("SELECT COUNT(*) AS n FROM api_keys WHERE platform = 'google'").get()).toEqual({ n: 0 });
     });
 
     it('imports selected preview rows', async () => {
