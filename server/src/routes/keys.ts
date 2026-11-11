@@ -230,6 +230,22 @@ function splitRawKey(rawKey: string) {
   };
 }
 
+// Google AI Studio credentials are single API-key values, not pasted
+// blocks, JSON fragments, or environment-file lines. Keep the upper bound
+// deliberately generous so future Google key formats are not tied to one
+// exact prefix/length, while rejecting oversized pasted values.
+const GOOGLE_KEY_MIN_LENGTH = 20;
+const GOOGLE_KEY_MAX_LENGTH = 256;
+const GOOGLE_KEY_FORMAT_ERROR = 'Google API key must be a single 20–256 character value with no whitespace. Create a fresh key in Google AI Studio.';
+function validateProviderKey(platform: string, value: string): string | null {
+  if (platform !== 'google') return null;
+  const key = value.trim();
+  if (key.length < GOOGLE_KEY_MIN_LENGTH || key.length > GOOGLE_KEY_MAX_LENGTH || /\s/.test(key)) {
+    return GOOGLE_KEY_FORMAT_ERROR;
+  }
+  return null;
+}
+
 function insertImportedKey(platform: (typeof PLATFORMS)[number], keyName: string, keyValue: string) {
   if (platform === 'custom') {
     throw new Error('Custom providers must be added with a base URL');
@@ -237,6 +253,8 @@ function insertImportedKey(platform: (typeof PLATFORMS)[number], keyName: string
   if (!resolveProvider(platform)) {
     throw new Error(`Unsupported platform: ${platform}`);
   }
+  const validationError = validateProviderKey(platform, keyValue);
+  if (validationError) throw new Error(validationError);
 
   const db = getDb();
   const { encrypted, iv, authTag } = encrypt(keyValue.trim());
@@ -776,6 +794,12 @@ keysRouter.post('/', (req: Request, res: Response) => {
 
   if (!isKeyless && !rawKey) {
     res.status(400).json({ error: { message: 'key is required' } });
+    return;
+  }
+
+  const keyValidationError = validateProviderKey(platform, rawKey);
+  if (keyValidationError) {
+    res.status(400).json({ error: { message: keyValidationError } });
     return;
   }
 
