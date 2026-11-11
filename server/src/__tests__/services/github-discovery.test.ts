@@ -46,12 +46,13 @@ describe('GitHub public repository discovery adapter', () => {
     expect(calls[0].origin + calls[0].pathname).toBe('https://api.github.com/search/repositories');
     expect(calls[0].searchParams.get('q')).toBe('stars:>5');
     expect(calls[0].searchParams.get('per_page')).toBe('100');
-    const saved = getDb().prepare(
-      "SELECT source_id AS sourceId, external_id AS externalId, kind, name, source_url AS sourceUrl, license,
-             schema_version AS schemaVersion, content_hash AS contentHash, language,
-             tags_json AS tagsJson, source_updated_at AS sourceUpdatedAt,
-             evidence_refs_json AS evidenceRefsJson FROM discovery_records"
-    ).get();
+    const saved = getDb().prepare(`
+      SELECT source_id AS sourceId, external_id AS externalId, kind, name,
+             source_url AS sourceUrl, license, schema_version AS schemaVersion,
+             content_hash AS contentHash, language, tags_json AS tagsJson,
+             source_updated_at AS sourceUpdatedAt, evidence_refs_json AS evidenceRefsJson
+        FROM discovery_records
+    `).get();
     expect(saved).toEqual({
       sourceId: 'github',
       externalId: 'sample/public-tool',
