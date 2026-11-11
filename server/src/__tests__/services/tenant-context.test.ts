@@ -16,6 +16,13 @@ describe('resolveTenantContext', () => {
     otherUserId = createUser('tenant-other@example.test', 'strong-test-password').userId;
     suspendedOnlyUserId = createUser('tenant-suspended@example.test', 'strong-test-password').userId;
 
+    // These tests construct explicit memberships below; remove the private
+    // workspaces createUser provisions so each case controls its own fixture.
+    getDb().prepare('DELETE FROM tenant_memberships WHERE user_id IN (?, ?, ?)')
+      .run(ownerId, otherUserId, suspendedOnlyUserId);
+    getDb().prepare('DELETE FROM tenants WHERE id IN (?, ?, ?)')
+      .run(`local-owner-${ownerId}`, `local-owner-${otherUserId}`, `local-owner-${suspendedOnlyUserId}`);
+
     getDb().prepare(`
       INSERT INTO tenants (id, name, slug, status, created_at_ms)
       VALUES ('tenant-owner', 'Owner workspace', 'tenant-owner', 'active', 1),
