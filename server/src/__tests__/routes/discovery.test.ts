@@ -49,10 +49,35 @@ describe('universal discovery catalogue foundation', () => {
     const result = await request(app, 'GET', '/api/discovery/sources');
     expect(result.status).toBe(200);
     expect(result.body.sources).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'github', adapterStatus: 'manual' }),
+      expect.objectContaining({ id: 'github', adapterStatus: 'available' }),
       expect.objectContaining({ id: 'google-ai', adapterStatus: 'manual' }),
       expect.objectContaining({ id: 'nvidia-build', adapterStatus: 'manual' }),
     ]));
+  });
+
+  it('runs the GitHub sync through an authenticated, bounded API endpoint', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      total_count: 1,
+      items: [{
+        full_name: 'sample/api-tool',
+        name: 'api-tool',
+        description: 'Public API tool',
+        html_url: 'https://github.com/sample/api-tool',
+        stargazers_count: 8,
+        forks_count: 2,
+        language: 'TypeScript',
+      }],
+    }), { status: 200, headers: { 'x-ratelimit-remaining': '50' } })) as typeof fetch;
+
+    const unauthenticated = await request(app, 'POST', '/api/discovery/github/sync', {}, false);
+    expect(unauthenticated.status).toBe(401);
+
+    const result = await request(app, 'POST', '/api/discovery/github/sync', { query: 'stars:>1' });
+    expect(result.status).toBe(200);
+    expect(result.body.result).toMatchObject({ fetched: 1, pages: 1, rateLimitRemaining: 50 });
+    expect(result.body.limits).toEqual({ maxPages: 3, perPage: 100, maxResults: 300 });
+    expect(getDb().prepare("SELECT external_id FROM discovery_records WHERE source_id = 'github'").get())
+      .toEqual({ external_id: 'sample/api-tool' });
   });
 
   it('ingests normalized records idempotently and resets verification when source data changes', async () => {

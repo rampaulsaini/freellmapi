@@ -55,6 +55,7 @@ const CLOUDFLARE_NEURON_USAGE_FILENAME = '20261104_000001_cloudflare_neuron_usag
 const TENANT_IDENTITY_FOUNDATION_FILENAME = '20261111_000001_tenant_identity_foundation.ts';
 const CLIENT_PROFILE_TENANT_SCOPE_FILENAME = '20261111_000003_client_profile_tenant_scope.ts';
 const UNIVERSAL_DISCOVERY_CATALOG_FILENAME = '20261111_000004_universal_discovery_catalog.ts';
+const GITHUB_DISCOVERY_SYNC_FILENAME = '20261111_000005_github_discovery_sync.ts';
 
 interface SchemaRow {
   type: string;
@@ -158,6 +159,7 @@ describe('migration round trip', () => {
         '20261111_000002_conversation_tenant_scope.ts',
         CLIENT_PROFILE_TENANT_SCOPE_FILENAME,
         UNIVERSAL_DISCOVERY_CATALOG_FILENAME,
+        GITHUB_DISCOVERY_SYNC_FILENAME,
       ]);
     } finally {
       db.close();
