@@ -1,6 +1,6 @@
 # Isolated public showroom
 
-This directory is a static, read-only catalogue presentation. It does not run the FreeLLMAPI application, access its database, handle provider credentials, accept enquiries, or process payments.
+This directory is a static, read-only catalogue presentation. It does not run the FreeLLMAPI application, access its SQLite database, accept enquiries, or process payments.
 
 ## Build
 
@@ -10,9 +10,22 @@ Run:
 node scripts/build-public-showroom.mjs
 ```
 
-Set `SHOWROOM_API_BASE_URL` to the HTTPS origin/base URL of the separately deployed FreeLLMAPI API before building. The generated `config.js` contains only that public URL; never put secrets in it. If the variable is absent, the site deliberately shows an unconfigured state and does not fabricate sample products.
+Choose one data source:
 
-The API deployment must separately allow the static site's exact origin in `DASHBOARD_ORIGINS` for browser CORS. The API's `GET /api/showroom/records` route is read-only and only returns records marked verified with a non-empty declared license, an HTTPS source URL, and an enabled source.
+### Direct Supabase read-only mode (recommended)
+
+Set these build-time variables:
+
+- `SHOWROOM_SUPABASE_URL`: the HTTPS Supabase project origin.
+- `SHOWROOM_SUPABASE_PUBLISHABLE_KEY`: the Supabase publishable key in `sb_publishable_` format. Legacy JWT keys are intentionally rejected by the public build.
+
+The generated browser config contains only the project URL and the `sb_publishable_` key. These keys are designed for public clients and are safe only with the least-privilege grants and RLS policies verified on the table. Never put a service-role or secret key in this static site.
+
+The frontend reads only `public.showroom_records` through the Supabase Data API, filtering for `is_published=true` and `verification_status=verified`. RLS further limits visible rows to eligible records. The public role has SELECT only; it cannot write. The page uses bounded pagination and does not collect visitor data.
+
+### Existing HTTPS API mode
+
+Alternatively, set `SHOWROOM_API_BASE_URL` to the HTTPS origin/base URL of a separately deployed FreeLLMAPI API before building. The API deployment must allow the static site's exact origin in `DASHBOARD_ORIGINS`. Its `GET /api/showroom/records` route is read-only and only returns records marked verified with a non-empty declared license, an HTTPS source URL, and an enabled source.
 
 ## Publishing verified records to the isolated database
 
@@ -23,12 +36,12 @@ Configure these variables only on the trusted FreeLLMAPI server (never in this s
 - `SUPABASE_URL`: the Supabase project URL.
 - `SUPABASE_SERVICE_ROLE_KEY`: the server-only service-role secret. Never expose it to clients, commit it, or place it in `public-showroom/config.js`.
 
-The publisher uses bounded batches and an idempotent upsert keyed by source and external ID. If the variables are absent, publishing returns a configuration error and does not publish data. The isolated database's anonymous role has SELECT-only access, constrained by RLS; writes are server-side only.
+The publisher uses bounded batches and an idempotent upsert keyed by source and external ID. If the variables are absent, publishing returns a configuration error and does not publish data.
 
 ## Trust and scope
 
 The “verified” label reports the catalogue's recorded review state; it is not an independent audit or legal certification of a license. The site has no login, signup, customer data collection, enquiry form, proposal, payment, or delivery workflow.
 
-## Render static site
+## Hosting
 
-Use this repository, the `main` branch, build command `node scripts/build-public-showroom.mjs`, and publish directory `public-showroom`. Configure the non-secret `SHOWROOM_API_BASE_URL` build environment variable only after the API has been deployed and its HTTPS URL has been smoke-tested. Keep the static site and API as separate services.
+Use this repository, the `main` branch, build command `node scripts/build-public-showroom.mjs`, and publish directory `public-showroom`. Configure the two non-secret Supabase build variables only after the public site's security configuration has been verified. Keep the static site and API as separate services.
