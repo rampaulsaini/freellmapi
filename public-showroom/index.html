@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Shirmani Research Institute — सार्वजनिक उत्पाद और टूल कैटलॉग। केवल घोषित सत्यापन और लाइसेंस जानकारी वाले रिकॉर्ड।">
+  <meta name="theme-color" content="#101827">
+  <title>Public Showroom | Shirmani Research Institute</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./config.js"></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Shirmani Research Institute home">
+      <span class="brand-mark">S</span>
+      <span><strong>Shirmani Research Institute</strong><small>सार्वजनिक उत्पाद प्रदर्शनी</small></span>
+    </a>
+    <span class="public-label">PUBLIC SHOWROOM</span>
+  </header>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">सरल • सहज • पारदर्शी</p>
+      <h1>उपयोगी डिजिटल उत्पाद,<br><em>स्पष्ट प्रमाण के साथ।</em></h1>
+      <p class="intro">यहाँ केवल वे कैटलॉग रिकॉर्ड दिखाए जाते हैं जिन्हें सिस्टम में verified चिह्नित किया गया है, जिनका लाइसेंस घोषित है और जिनका स्रोत HTTPS पर है।</p>
+      <div class="trust-note"><span aria-hidden="true">ⓘ</span> “Verified” और “लाइसेंस घोषित” स्रोत रिकॉर्ड के दर्ज फ़ील्ड हैं; यह स्वतंत्र कानूनी या गुणवत्ता प्रमाणपत्र नहीं है।</div>
+    </section>
+
+    <section class="catalog" aria-labelledby="catalog-title">
+      <div class="catalog-head">
+        <div><p class="eyebrow">DISCOVER</p><h2 id="catalog-title">उत्पाद और टूल</h2></div>
+        <label class="filter-label" for="kind-filter">श्रेणी
+          <select id="kind-filter">
+            <option value="">सभी श्रेणियाँ</option>
+            <option value="product">उत्पाद</option><option value="tool">टूल</option>
+            <option value="api">API</option><option value="model">मॉडल</option>
+            <option value="dataset">डेटासेट</option><option value="service">सेवा</option>
+          </select>
+        </label>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite">कैटलॉग से सुरक्षित कनेक्शन की जाँच हो रही है…</div>
+      <div id="records" class="records" aria-live="polite"></div>
+      <div class="pagination"><button id="previous" type="button" disabled>← पिछला</button><span id="page-label">—</span><button id="next" type="button" disabled>अगला →</button></div>
+    </section>
+  </main>
+  <footer><span>Shirmani Research Institute</span><span>केवल सार्वजनिक कैटलॉग · कोई भुगतान या डिलीवरी दावा नहीं</span></footer>
+</body>
+</html>
