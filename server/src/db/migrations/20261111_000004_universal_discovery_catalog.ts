@@ -39,8 +39,8 @@ export function up(db: Db): void {
   `);
 
   const insert = db.prepare(`
-    INSERT OR IGNORE INTO discovery_sources (id, name, homepage_url, adapter_status)
-    VALUES (?, ?, ?, ?)
+    INSERT OR IGNORE INTO discovery_sources (id, name, homepage_url, adapter_status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, '2026-11-11T00:00:00.000Z', '2026-11-11T00:00:00.000Z')
   `);
   insert.run('github', 'GitHub', 'https://github.com', 'available');
   insert.run('google-ai', 'Google AI for Developers', 'https://ai.google.dev', 'manual');
