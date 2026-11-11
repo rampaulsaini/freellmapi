@@ -56,6 +56,14 @@ test('build requires Supabase URL and key together', () => {
   assert.notEqual(result.status, 0);
 });
 
+test('build rejects legacy JWT keys that could contain service-role credentials', () => {
+  const result = build({
+    SHOWROOM_SUPABASE_URL: 'https://project.supabase.co',
+    SHOWROOM_SUPABASE_PUBLISHABLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature'
+  });
+  assert.notEqual(result.status, 0);
+});
+
 test('build rejects a service-role-like key', () => {
   const result = build({
     SHOWROOM_SUPABASE_URL: 'https://project.supabase.co',
