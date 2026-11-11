@@ -52,6 +52,7 @@ const REQUEST_FAILURE_ATTRIBUTION_FILENAME = '20261017_233153_request_failure_at
 const REMOVE_AURAY_PROVIDER_FILENAME = '20261019_000001_remove_auray_provider.ts';
 const KEY_LAST_HEALTHY_AT_FILENAME = '20261020_000001_key_last_healthy_at.ts';
 const CLOUDFLARE_NEURON_USAGE_FILENAME = '20261104_000001_cloudflare_neuron_usage.ts';
+const TENANT_IDENTITY_FOUNDATION_FILENAME = '20261111_000001_tenant_identity_foundation.ts';
 
 interface SchemaRow {
   type: string;
@@ -151,7 +152,35 @@ describe('migration round trip', () => {
         KEY_LAST_HEALTHY_AT_FILENAME,
         '20261028_000001_custom_media_endpoint_identity.ts',
         CLOUDFLARE_NEURON_USAGE_FILENAME,
+        TENANT_IDENTITY_FOUNDATION_FILENAME,
       ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('creates a private tenant for each existing dashboard account', async () => {
+    const db = new Database(':memory:');
+
+    try {
+      runLegacyBaseline(db);
+      db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)').run('owner-one@example.test', 'hash-one');
+      db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)').run('owner-two@example.test', 'hash-two');
+
+      await runMigrations(db, 'up');
+
+      const tenants = db.prepare('SELECT id, name, slug FROM tenants ORDER BY id').all() as Array<{
+        id: string; name: string; slug: string;
+      }>;
+      const memberships = db.prepare('SELECT tenant_id, user_id, role FROM tenant_memberships ORDER BY user_id').all() as Array<{
+        tenant_id: string; user_id: number; role: string;
+      }>;
+
+      expect(tenants).toHaveLength(2);
+      expect(new Set(tenants.map(tenant => tenant.id)).size).toBe(2);
+      expect(memberships).toHaveLength(2);
+      expect(memberships.map(membership => membership.role)).toEqual(['owner', 'owner']);
+      expect(memberships[0].tenant_id).not.toBe(memberships[1].tenant_id);
     } finally {
       db.close();
     }
